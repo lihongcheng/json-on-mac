@@ -6,6 +6,7 @@
 
 - 实时语法校验，并显示错误行列
 - 2/4 空格格式化，保持所有字符串字段的原始值
+- 源码/层级预览切换，格式化后自动进入可折叠的只读缩进视图
 - 树视图与 JSONPath 结果递归展开字符串中的对象或数组 JSON
 - 支持继续查询内嵌 JSON 路径，例如 `$.query.Base.extra.user_extra`
 - 压缩、复制、打开、保存和文件拖放
@@ -46,7 +47,7 @@ open "dist/JSON Lens.app"
 ./scripts/package-dmg.sh
 ```
 
-脚本会从 `Info.plist` 读取版本号，重新构建应用、创建带有 `Applications` 快捷方式的压缩镜像，并执行挂载回读和签名校验。当前产物位于 `dist/JSON-Lens-1.1.0-arm64.dmg`。
+脚本会从 `Info.plist` 读取版本号，重新构建应用、创建带有 `Applications` 快捷方式的压缩镜像，并执行挂载回读和签名校验。当前产物位于 `dist/JSON-Lens-1.2.0-arm64.dmg`。
 
 ## JSONPath 范围
 

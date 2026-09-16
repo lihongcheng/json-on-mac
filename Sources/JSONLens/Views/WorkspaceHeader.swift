@@ -69,7 +69,7 @@ struct WorkspaceHeader: View {
             .buttonStyle(CommandButtonStyle(emphasized: true))
             .disabled(!model.isSourceValid)
             .opacity(model.isSourceValid ? 1 : 0.45)
-            .help("格式化源 JSON；字符串中的 JSON 在结果视图递归展开")
+            .help("格式化并显示递归缩进层级，原始字符串值不变")
         }
         .padding(.horizontal, 14)
         .frame(height: 56)

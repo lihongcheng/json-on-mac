@@ -4,6 +4,8 @@ import Foundation
 struct ParsedJSON {
     let value: Any
     let formatted: String
+    let presentationFormatted: String
+    let embeddedJSONCount: Int
     let minified: String
     let rootNode: JSONNode
     let statistics: JSONStatistics
@@ -43,6 +45,17 @@ enum JSONEngine {
         }
 
         let formatted = try serialize(value, pretty: true, indent: indent)
+        var embeddedJSONCount = 0
+        let presentationValue = recursivelyExpandEmbeddedJSON(
+            in: value,
+            embeddedDepth: 0,
+            count: &embeddedJSONCount
+        )
+        let presentationFormatted = try serialize(
+            presentationValue,
+            pretty: true,
+            indent: indent
+        )
         let minified = try serialize(value, pretty: false, indent: indent)
         var statistics = JSONStatistics()
         statistics.byteCount = data.count
@@ -51,6 +64,8 @@ enum JSONEngine {
         return ParsedJSON(
             value: value,
             formatted: formatted,
+            presentationFormatted: presentationFormatted,
+            embeddedJSONCount: embeddedJSONCount,
             minified: minified,
             rootNode: makeNode(value: value, name: "root", path: "$"),
             statistics: statistics,

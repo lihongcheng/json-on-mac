@@ -5,6 +5,10 @@ struct JSONEditorPane: View {
     let title: String
     let subtitle: String?
     @Binding var text: String
+    let previewText: String?
+    let previewRoot: JSONNode?
+    let previewIndentSize: Int
+    @Binding var viewMode: EditorViewMode
     let issue: ParseIssue?
     let isValid: Bool
     let onFormat: () -> Void
@@ -44,7 +48,7 @@ struct JSONEditorPane: View {
     private var header: some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
+                Text(isShowingPreview ? "\(title) · 层级预览" : title)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(AppTheme.textPrimary)
                 if let subtitle {
@@ -56,6 +60,18 @@ struct JSONEditorPane: View {
             }
 
             Spacer(minLength: 8)
+
+            Picker("显示模式", selection: $viewMode) {
+                ForEach(EditorViewMode.allCases) { mode in
+                    Image(systemName: mode.systemImage)
+                        .tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 68)
+            .disabled(previewRoot == nil)
+            .help("切换源码编辑与缩进层级预览")
 
             StatusBadge(
                 isValid: isValid,
@@ -74,7 +90,7 @@ struct JSONEditorPane: View {
                 Image(systemName: "text.alignleft")
             }
             .buttonStyle(ToolbarIconButtonStyle())
-            .help("格式化源 JSON；字符串中的 JSON 在结果视图递归展开")
+            .help("格式化并显示递归缩进层级，原始字符串值不变")
 
             if let onPaste {
                 Button(action: onPaste) {
@@ -104,21 +120,31 @@ struct JSONEditorPane: View {
         .frame(height: 48)
     }
 
+    @ViewBuilder
     private var editor: some View {
-        TextEditor(text: $text)
-            .font(.system(size: 13, weight: .regular, design: .monospaced))
-            .foregroundStyle(AppTheme.textPrimary)
-            .scrollContentBackground(.hidden)
-            .background(AppTheme.canvas)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 6)
-            .textEditorStyle(.plain)
-            .disableAutocorrection(true)
+        if isShowingPreview, let previewRoot {
+            JSONHierarchyPreview(root: previewRoot, indentSize: previewIndentSize)
+        } else {
+            TextEditor(text: $text)
+                .font(.system(size: 13, weight: .regular, design: .monospaced))
+                .foregroundStyle(AppTheme.textPrimary)
+                .scrollContentBackground(.hidden)
+                .background(AppTheme.canvas)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 6)
+                .textEditorStyle(.plain)
+                .disableAutocorrection(true)
+        }
     }
 
     private var footer: some View {
         HStack(spacing: 12) {
-            if let issue {
+            if isShowingPreview {
+                Image(systemName: "eye.fill")
+                    .foregroundStyle(AppTheme.amber)
+                Text("只读层级预览 · 原值未改变")
+                    .foregroundStyle(AppTheme.textSecondary)
+            } else if let issue {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(AppTheme.coral)
                 Text(issueLocation(issue))
@@ -137,8 +163,10 @@ struct JSONEditorPane: View {
 
             Spacer()
 
-            Text("\(lineCount) 行")
-            Text(ByteCountFormatter.string(fromByteCount: Int64(text.utf8.count), countStyle: .file))
+            Text("\(displayLineCount) 行")
+            Text(
+                "\(isShowingPreview ? "原值 " : "")\(ByteCountFormatter.string(fromByteCount: Int64(text.utf8.count), countStyle: .file))"
+            )
         }
         .font(.system(size: 10, design: .monospaced))
         .foregroundStyle(AppTheme.textSecondary)
@@ -146,8 +174,13 @@ struct JSONEditorPane: View {
         .frame(height: 30)
     }
 
-    private var lineCount: Int {
-        max(1, text.reduce(into: 1) { count, character in
+    private var isShowingPreview: Bool {
+        viewMode == .preview && previewRoot != nil
+    }
+
+    private var displayLineCount: Int {
+        let displayedText = isShowingPreview ? (previewText ?? text) : text
+        return max(1, displayedText.reduce(into: 1) { count, character in
             if character == "\n" {
                 count += 1
             }

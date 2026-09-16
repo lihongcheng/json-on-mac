@@ -42,10 +42,33 @@ enum ResultViewMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum EditorViewMode: String, CaseIterable, Identifiable {
+    case source
+    case preview
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .source: "源码"
+        case .preview: "层级"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .source: "pencil"
+        case .preview: "list.bullet.indent"
+        }
+    }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     @Published var mode: WorkspaceMode = .inspect
     @Published var resultView: ResultViewMode = .tree
+    @Published var sourceEditorView: EditorViewMode = .source
+    @Published var comparisonEditorView: EditorViewMode = .source
     @Published var sourceText: String {
         didSet {
             refreshSource()
@@ -87,6 +110,9 @@ final class AppModel: ObservableObject {
         if let initialMode = environment["JSONLENS_INITIAL_MODE"],
            let workspaceMode = WorkspaceMode(rawValue: initialMode) {
             mode = workspaceMode
+        }
+        if environment["JSONLENS_INITIAL_EDITOR_VIEW"] == EditorViewMode.preview.rawValue {
+            sourceEditorView = .preview
         }
         loadHistory()
         refreshSource()
@@ -162,8 +188,10 @@ final class AppModel: ObservableObject {
             return
         }
         sourceText = parsed.formatted
+        sourceEditorView = .preview
         saveSnapshot(title: documentTitle)
-        showStatus("已格式化，字符串原值未改变")
+        let count = parsed.embeddedJSONCount
+        showStatus(count > 0 ? "已缩进展示 \(count) 个内嵌 JSON，原值未改变" : "已格式化")
     }
 
     func minifySource() {
@@ -172,6 +200,7 @@ final class AppModel: ObservableObject {
             return
         }
         sourceText = minified
+        sourceEditorView = .source
         saveSnapshot(title: documentTitle)
         showStatus("已压缩")
     }
@@ -182,7 +211,9 @@ final class AppModel: ObservableObject {
             return
         }
         comparisonText = comparisonParsed.formatted
-        showStatus("右侧已格式化，字符串原值未改变")
+        comparisonEditorView = .preview
+        let count = comparisonParsed.embeddedJSONCount
+        showStatus(count > 0 ? "右侧已缩进展示 \(count) 个内嵌 JSON" : "右侧已格式化")
     }
 
     func copySource() {
@@ -201,6 +232,7 @@ final class AppModel: ObservableObject {
             return
         }
         sourceText = value
+        sourceEditorView = .source
         currentFileURL = nil
         showStatus("已从剪贴板粘贴")
     }
@@ -211,23 +243,28 @@ final class AppModel: ObservableObject {
             return
         }
         comparisonText = value
+        comparisonEditorView = .source
         showStatus("已粘贴到右侧")
     }
 
     func clearSource() {
         sourceText = ""
+        sourceEditorView = .source
         currentFileURL = nil
         showStatus("已清空")
     }
 
     func clearComparison() {
         comparisonText = ""
+        comparisonEditorView = .source
         showStatus("已清空右侧")
     }
 
     func loadSample() {
         sourceText = Self.sampleJSON
         comparisonText = Self.comparisonSampleJSON
+        sourceEditorView = .source
+        comparisonEditorView = .source
         currentFileURL = nil
         showStatus("已载入示例")
     }
@@ -260,6 +297,8 @@ final class AppModel: ObservableObject {
         let oldSource = sourceText
         sourceText = comparisonText
         comparisonText = oldSource
+        sourceEditorView = .source
+        comparisonEditorView = .source
         currentFileURL = nil
         showStatus("已交换两侧")
     }
@@ -294,6 +333,7 @@ final class AppModel: ObservableObject {
     func loadComparison(from url: URL) {
         do {
             comparisonText = try String(contentsOf: url, encoding: .utf8)
+            comparisonEditorView = .source
             showStatus("已载入 \(url.lastPathComponent)")
         } catch {
             showStatus("读取失败：\(error.localizedDescription)")
@@ -303,6 +343,7 @@ final class AppModel: ObservableObject {
     func loadSource(from url: URL) {
         do {
             sourceText = try String(contentsOf: url, encoding: .utf8)
+            sourceEditorView = .source
             currentFileURL = url
             NSDocumentController.shared.noteNewRecentDocumentURL(url)
             saveSnapshot(title: url.lastPathComponent)
@@ -358,6 +399,7 @@ final class AppModel: ObservableObject {
 
     func restore(_ snapshot: HistorySnapshot) {
         sourceText = snapshot.content
+        sourceEditorView = .source
         currentFileURL = nil
         showStatus("已恢复 \(snapshot.title)")
     }

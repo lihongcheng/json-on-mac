@@ -88,6 +88,18 @@ enum CoreChecks {
         )
 
         let parsed = try JSONEngine.parse(source, indent: 4)
+        expect(parsed.embeddedJSONCount == 2, "embedded JSON count")
+        expect(parsed.presentationFormatted.contains("\n    \"query\" : {"), "query preview indentation")
+        expect(parsed.presentationFormatted.contains("\n        \"Base\" : {"), "embedded object indentation")
+        expect(
+            parsed.presentationFormatted.contains("\n                \"user_extra\" : {"),
+            "nested embedded string indentation"
+        )
+        expect(
+            parsed.presentationFormatted.contains("\n                    \"RPC_PERSIST_HOST\""),
+            "deep preview indentation"
+        )
+
         let output = try JSONSerialization.jsonObject(with: Data(parsed.formatted.utf8)) as? [String: Any]
         expect(output?["query"] as? String == queryValue, "source formatting preserves query string")
         expect(output?["invalid"] as? String == #"{"broken":}"#, "invalid JSON string unchanged")
