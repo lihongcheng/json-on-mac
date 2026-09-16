@@ -15,6 +15,7 @@ struct JSONHierarchyPreview: View {
                     trailingComma: false,
                     indentSize: indentSize
                 )
+                .textSelection(.enabled)
                 .frame(
                     minWidth: max(0, geometry.size.width - 20),
                     minHeight: max(0, geometry.size.height - 18),
