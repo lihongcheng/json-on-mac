@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP_NAME="JSON Lens"
-VERSION="1.0.0"
+VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT/Resources/Info.plist")"
 ARCH="$(uname -m)"
 APP_PATH="$ROOT/dist/$APP_NAME.app"
 DMG_PATH="$ROOT/dist/JSON-Lens-$VERSION-$ARCH.dmg"

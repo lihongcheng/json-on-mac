@@ -110,11 +110,11 @@ struct QueryWorkspace: View {
                     Spacer()
                     Button {
                         let output = model.queryResults
-                            .map { "\($0.path)\t\($0.displayValue)" }
+                            .map { "\($0.path)\t\($0.copyValue)" }
                             .joined(separator: "\n")
-                        model.copy(output, message: "已复制全部结果")
+                        model.copy(output, message: "已复制全部原始值")
                     } label: {
-                        Label("复制全部", systemImage: "doc.on.doc")
+                        Label("复制原值", systemImage: "doc.on.doc")
                     }
                     .buttonStyle(CommandButtonStyle())
                 }
@@ -136,32 +136,42 @@ struct QueryWorkspace: View {
 
     private func resultRow(_ result: JSONQueryResult) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: result.kind.systemImage)
+            Image(systemName: result.displayKind.systemImage)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(result.kind.color)
+                .foregroundStyle(result.displayKind.color)
                 .frame(width: 18, height: 20)
 
             VStack(alignment: .leading, spacing: 5) {
-                Text(result.path)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(AppTheme.textPrimary)
-                    .textSelection(.enabled)
+                HStack(spacing: 7) {
+                    Text(result.path)
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .textSelection(.enabled)
+                    if result.isEmbeddedJSON {
+                        Text("JSON 字符串预览")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(AppTheme.amber)
+                            .padding(.horizontal, 5)
+                            .frame(height: 18)
+                            .background(AppTheme.amber.opacity(0.08), in: RoundedRectangle(cornerRadius: 3))
+                    }
+                }
                 Text(result.displayValue)
                     .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(result.kind.color.opacity(0.9))
+                    .foregroundStyle(result.displayKind.color.opacity(0.9))
                     .textSelection(.enabled)
-                    .lineLimit(4)
+                    .lineLimit(result.isEmbeddedJSON ? 24 : 4)
             }
 
             Spacer(minLength: 8)
 
             Button {
-                model.copy(result.displayValue, message: "已复制值")
+                model.copy(result.copyValue, message: "已复制原始值")
             } label: {
                 Image(systemName: "doc.on.doc")
             }
             .buttonStyle(ToolbarIconButtonStyle())
-            .help("复制值")
+            .help("复制原始值")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)

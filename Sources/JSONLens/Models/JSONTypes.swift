@@ -26,15 +26,24 @@ struct JSONNode: Identifiable {
     let path: String
     let kind: JSONKind
     let preview: String
+    let copyValue: String
     let children: [JSONNode]
+    let embeddedJSONKind: JSONKind?
 
     var count: Int? {
+        if embeddedJSONKind != nil {
+            return children.count
+        }
         switch kind {
         case .object, .array:
-            children.count
+            return children.count
         default:
-            nil
+            return nil
         }
+    }
+
+    var displayKind: JSONKind {
+        embeddedJSONKind ?? kind
     }
 }
 
@@ -68,7 +77,10 @@ struct JSONQueryResult: Identifiable {
     let id = UUID()
     let path: String
     let kind: JSONKind
+    let displayKind: JSONKind
     let displayValue: String
+    let copyValue: String
+    let isEmbeddedJSON: Bool
     let rawValue: Any
 }
 

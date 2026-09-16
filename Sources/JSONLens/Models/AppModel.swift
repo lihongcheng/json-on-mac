@@ -78,9 +78,13 @@ final class AppModel: ObservableObject {
     private let historyKey = "jsonlens.history.v1"
 
     init() {
-        sourceText = Self.sampleJSON
+        let environment = ProcessInfo.processInfo.environment
+        sourceText = environment["JSONLENS_INITIAL_SOURCE"] ?? Self.sampleJSON
         comparisonText = Self.comparisonSampleJSON
-        if let initialMode = ProcessInfo.processInfo.environment["JSONLENS_INITIAL_MODE"],
+        if let initialQuery = environment["JSONLENS_INITIAL_QUERY"] {
+            queryExpression = initialQuery
+        }
+        if let initialMode = environment["JSONLENS_INITIAL_MODE"],
            let workspaceMode = WorkspaceMode(rawValue: initialMode) {
             mode = workspaceMode
         }
@@ -153,13 +157,13 @@ final class AppModel: ObservableObject {
     }
 
     func formatSource() {
-        guard let formatted = parsed?.formatted else {
+        guard let parsed else {
             showStatus("请先修复 JSON 格式")
             return
         }
-        sourceText = formatted
+        sourceText = parsed.formatted
         saveSnapshot(title: documentTitle)
-        showStatus("已格式化")
+        showStatus("已格式化，字符串原值未改变")
     }
 
     func minifySource() {
@@ -173,12 +177,12 @@ final class AppModel: ObservableObject {
     }
 
     func formatComparison() {
-        guard let formatted = comparisonParsed?.formatted else {
+        guard let comparisonParsed else {
             showStatus("右侧 JSON 格式无效")
             return
         }
-        comparisonText = formatted
-        showStatus("右侧已格式化")
+        comparisonText = comparisonParsed.formatted
+        showStatus("右侧已格式化，字符串原值未改变")
     }
 
     func copySource() {

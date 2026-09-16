@@ -74,7 +74,7 @@ struct JSONEditorPane: View {
                 Image(systemName: "text.alignleft")
             }
             .buttonStyle(ToolbarIconButtonStyle())
-            .help("格式化 JSON")
+            .help("格式化源 JSON；字符串中的 JSON 在结果视图递归展开")
 
             if let onPaste {
                 Button(action: onPaste) {

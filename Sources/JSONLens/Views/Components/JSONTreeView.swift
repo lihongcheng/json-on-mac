@@ -77,10 +77,11 @@ private struct JSONTreeRow: View {
     let onCopyValue: (String) -> Void
 
     var body: some View {
+        let displayKind = node.displayKind
         HStack(spacing: 8) {
-            Image(systemName: node.kind.systemImage)
+            Image(systemName: displayKind.systemImage)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(node.kind.color)
+                .foregroundStyle(displayKind.color)
                 .frame(width: 16)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -96,10 +97,19 @@ private struct JSONTreeRow: View {
                 }
             }
 
+            if let embeddedKind = node.embeddedJSONKind {
+                Text("String → \(embeddedKind.label)")
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(AppTheme.amber)
+                    .padding(.horizontal, 5)
+                    .frame(height: 18)
+                    .background(AppTheme.amber.opacity(0.08), in: RoundedRectangle(cornerRadius: 3))
+            }
+
             if !showsFullPath {
                 Text(node.preview)
                     .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(node.children.isEmpty ? node.kind.color.opacity(0.9) : AppTheme.textSecondary)
+                    .foregroundStyle(node.children.isEmpty ? displayKind.color.opacity(0.9) : AppTheme.textSecondary)
                     .lineLimit(1)
             }
 
@@ -120,10 +130,8 @@ private struct JSONTreeRow: View {
             Button("复制路径") {
                 onCopyPath(node.path)
             }
-            if node.children.isEmpty {
-                Button("复制值") {
-                    onCopyValue(node.preview)
-                }
+            Button(node.embeddedJSONKind == nil ? "复制值" : "复制原始值") {
+                onCopyValue(node.copyValue)
             }
         }
     }

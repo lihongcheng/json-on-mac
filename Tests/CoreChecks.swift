@@ -5,11 +5,12 @@ enum CoreChecks {
     static func main() throws {
         try testParseBuildsTreeStatisticsAndTable()
         try testFormatting()
+        try testEmbeddedJSONPresentationPreservesOriginalValues()
         try testQuery()
         try testDiff()
         testCSV()
         testInvalidJSON()
-        print("Core checks passed: 6/6")
+        print("Core checks passed: 7/7")
     }
 
     private static func expect(
@@ -52,6 +53,73 @@ enum CoreChecks {
 
         let fragment = try JSONEngine.parse(#""standalone""#)
         expect(fragment.minified == #""standalone""#, "top-level JSON fragment")
+    }
+
+    private static func testEmbeddedJSONPresentationPreservesOriginalValues() throws {
+        let userExtra = try JSONEngine.serialize(
+            [
+                "RPC_PERSIST_HOST": "voice.ap-southeast-1.bytepluses.com",
+                "RPC_PERSIST_speech_session_id": "39dadfde-f399-4dfa-b801-bec4e8d7a650"
+            ],
+            pretty: false
+        )
+        let queryValue = try JSONEngine.serialize(
+            [
+                "audio": ["bits": 16, "format": "pcm"] as [String: Any],
+                "Base": [
+                    "Caller": "data.speech.gateway",
+                    "extra": [
+                        "cluster": "tob",
+                        "user_extra": userExtra
+                    ]
+                ] as [String: Any]
+            ],
+            pretty: false
+        )
+        let source = try JSONEngine.serialize(
+            [
+                "duration": 13_600,
+                "query": queryValue,
+                "invalid": #"{"broken":}"#,
+                "scalar": "123",
+                "plain": "[not json]"
+            ] as [String: Any],
+            pretty: false
+        )
+
+        let parsed = try JSONEngine.parse(source, indent: 4)
+        let output = try JSONSerialization.jsonObject(with: Data(parsed.formatted.utf8)) as? [String: Any]
+        expect(output?["query"] as? String == queryValue, "source formatting preserves query string")
+        expect(output?["invalid"] as? String == #"{"broken":}"#, "invalid JSON string unchanged")
+        expect(output?["scalar"] as? String == "123", "scalar-like string unchanged")
+        expect(output?["plain"] as? String == "[not json]", "plain bracket string unchanged")
+
+        let queryNode = parsed.rootNode.children.first { $0.name == "query" }
+        expect(queryNode?.kind == .string, "query remains a string node")
+        expect(queryNode?.embeddedJSONKind == .object, "query exposes object presentation")
+        expect(queryNode?.copyValue == queryValue, "query tree copy preserves original")
+
+        let userExtraNode = queryNode?
+            .children.first { $0.name == "Base" }?
+            .children.first { $0.name == "extra" }?
+            .children.first { $0.name == "user_extra" }
+        expect(userExtraNode?.kind == .string, "user_extra remains a string node")
+        expect(userExtraNode?.embeddedJSONKind == .object, "user_extra expands recursively")
+        expect(userExtraNode?.copyValue == userExtra, "user_extra copy preserves original")
+
+        let queryResult = try JSONEngine.query("$.query", in: parsed.value).first
+        expect(queryResult?.kind == .string, "query result keeps source type")
+        expect(queryResult?.displayKind == .object, "query result renders as object")
+        expect(queryResult?.isEmbeddedJSON == true, "query result marks formatted preview")
+        expect(queryResult?.displayValue.contains("\n") == true, "query result is pretty printed")
+        expect(queryResult?.displayValue.contains("\"user_extra\" : {") == true, "nested JSON is expanded")
+        expect(queryResult?.copyValue == queryValue, "query result copies original string")
+
+        let nestedResult = try JSONEngine.query(
+            "$.query.Base.extra.user_extra.RPC_PERSIST_HOST",
+            in: parsed.value
+        )
+        expect(nestedResult.first?.copyValue == "voice.ap-southeast-1.bytepluses.com", "nested path query")
     }
 
     private static func testQuery() throws {

@@ -91,35 +91,40 @@ enum JSONEngine {
         for token in tokens {
             var next: [(String, Any)] = []
             for (path, value) in matches {
+                let traversableValue = embeddedJSONValue(from: value) ?? value
                 switch token {
                 case let .field(key):
-                    if let object = value as? [String: Any], let child = object[key] {
+                    if let object = traversableValue as? [String: Any], let child = object[key] {
                         next.append((append(key: key, to: path), child))
                     }
                 case let .index(index):
-                    if let array = value as? [Any], array.indices.contains(index) {
+                    if let array = traversableValue as? [Any], array.indices.contains(index) {
                         next.append(("\(path)[\(index)]", array[index]))
                     }
                 case .wildcard:
-                    if let object = value as? [String: Any] {
+                    if let object = traversableValue as? [String: Any] {
                         for key in object.keys.sorted() {
                             next.append((append(key: key, to: path), object[key] as Any))
                         }
-                    } else if let array = value as? [Any] {
+                    } else if let array = traversableValue as? [Any] {
                         next.append(contentsOf: array.enumerated().map { ("\((path))[\($0.offset)]", $0.element) })
                     }
                 case let .recursive(key):
-                    collectRecursiveMatches(key: key, value: value, path: path, result: &next)
+                    collectRecursiveMatches(key: key, value: traversableValue, path: path, result: &next)
                 }
             }
             matches = next
         }
 
         return matches.map { path, value in
-            JSONQueryResult(
+            let presentation = presentationDescription(value)
+            return JSONQueryResult(
                 path: path,
                 kind: kind(of: value),
-                displayValue: compactDescription(value, limit: 240),
+                displayKind: presentation.displayKind,
+                displayValue: presentation.text,
+                copyValue: copyDescription(value),
+                isEmbeddedJSON: presentation.isEmbeddedJSON,
                 rawValue: value
             )
         }
@@ -305,7 +310,8 @@ enum JSONEngine {
         path: String,
         result: inout [(String, Any)]
     ) {
-        if let object = value as? [String: Any] {
+        let traversableValue = embeddedJSONValue(from: value) ?? value
+        if let object = traversableValue as? [String: Any] {
             for childKey in object.keys.sorted() {
                 guard let child = object[childKey] else {
                     continue
@@ -316,7 +322,7 @@ enum JSONEngine {
                 }
                 collectRecursiveMatches(key: key, value: child, path: childPath, result: &result)
             }
-        } else if let array = value as? [Any] {
+        } else if let array = traversableValue as? [Any] {
             for (arrayIndex, child) in array.enumerated() {
                 collectRecursiveMatches(
                     key: key,
@@ -463,25 +469,161 @@ enum JSONEngine {
         }
     }
 
-    private static func makeNode(value: Any, name: String, path: String) -> JSONNode {
+    private static func presentationDescription(
+        _ value: Any,
+        indent: Int = 2
+    ) -> (text: String, isEmbeddedJSON: Bool, displayKind: JSONKind) {
+        var embeddedCount = 0
+        let presentationValue = recursivelyExpandEmbeddedJSON(
+            in: value,
+            embeddedDepth: 0,
+            count: &embeddedCount
+        )
+
+        if presentationValue is [String: Any] || presentationValue is [Any],
+           let formatted = try? serialize(presentationValue, pretty: true, indent: indent) {
+            return (formatted, embeddedCount > 0, kind(of: presentationValue))
+        }
+        return (compactDescription(value, limit: 240), false, kind(of: value))
+    }
+
+    private static func copyDescription(_ value: Any) -> String {
+        if let string = value as? String {
+            return string
+        }
+        if (value is [String: Any] || value is [Any]),
+           let serialized = try? serialize(value, pretty: false) {
+            return serialized
+        }
+        return compactDescription(value, limit: .max)
+    }
+
+    private static func recursivelyExpandEmbeddedJSON(
+        in value: Any,
+        embeddedDepth: Int,
+        count: inout Int
+    ) -> Any {
+        if let object = value as? [String: Any] {
+            return object.mapValues {
+                recursivelyExpandEmbeddedJSON(
+                    in: $0,
+                    embeddedDepth: embeddedDepth,
+                    count: &count
+                )
+            }
+        }
+
+        if let array = value as? [Any] {
+            return array.map {
+                recursivelyExpandEmbeddedJSON(
+                    in: $0,
+                    embeddedDepth: embeddedDepth,
+                    count: &count
+                )
+            }
+        }
+
+        guard embeddedDepth < 32,
+              let embeddedValue = embeddedJSONValue(from: value) else {
+            return value
+        }
+
+        count += 1
+        return recursivelyExpandEmbeddedJSON(
+            in: embeddedValue,
+            embeddedDepth: embeddedDepth + 1,
+            count: &count
+        )
+    }
+
+    private static func embeddedJSONValue(from value: Any) -> Any? {
+        guard let string = value as? String, looksLikeJSONContainer(string) else {
+            return nil
+        }
+        let data = Data(string.utf8)
+        guard let embeddedValue = try? JSONSerialization.jsonObject(with: data),
+              embeddedValue is [String: Any] || embeddedValue is [Any] else {
+            return nil
+        }
+        return embeddedValue
+    }
+
+    private static func looksLikeJSONContainer(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let first = trimmed.first, let last = trimmed.last else {
+            return false
+        }
+        return (first == "{" && last == "}") || (first == "[" && last == "]")
+    }
+
+    private static func makeNode(
+        value: Any,
+        name: String,
+        path: String,
+        embeddedDepth: Int = 0
+    ) -> JSONNode {
         let valueKind = kind(of: value)
         let children: [JSONNode]
         let preview: String
+        let embeddedJSONKind: JSONKind?
 
-        if let object = value as? [String: Any] {
+        if embeddedDepth < 32, let embeddedValue = embeddedJSONValue(from: value) {
+            let embeddedKind = kind(of: embeddedValue)
+            embeddedJSONKind = embeddedKind
+            if let object = embeddedValue as? [String: Any] {
+                children = object.keys.sorted().compactMap { key in
+                    guard let child = object[key] else {
+                        return nil
+                    }
+                    return makeNode(
+                        value: child,
+                        name: key,
+                        path: append(key: key, to: path),
+                        embeddedDepth: embeddedDepth + 1
+                    )
+                }
+                preview = "JSON 字符串 · \(object.count) 个字段"
+            } else if let array = embeddedValue as? [Any] {
+                children = array.enumerated().map { index, child in
+                    makeNode(
+                        value: child,
+                        name: "\(index)",
+                        path: "\(path)[\(index)]",
+                        embeddedDepth: embeddedDepth + 1
+                    )
+                }
+                preview = "JSON 字符串 · \(array.count) 项"
+            } else {
+                children = []
+                preview = compactDescription(value)
+            }
+        } else if let object = value as? [String: Any] {
+            embeddedJSONKind = nil
             children = object.keys.sorted().compactMap { key in
                 guard let child = object[key] else {
                     return nil
                 }
-                return makeNode(value: child, name: key, path: append(key: key, to: path))
+                return makeNode(
+                    value: child,
+                    name: key,
+                    path: append(key: key, to: path),
+                    embeddedDepth: embeddedDepth
+                )
             }
             preview = "\(object.count) 个字段"
         } else if let array = value as? [Any] {
+            embeddedJSONKind = nil
             children = array.enumerated().map { index, child in
-                makeNode(value: child, name: "\(index)", path: "\(path)[\(index)]")
+                makeNode(
+                    value: child,
+                    name: "\(index)",
+                    path: "\(path)[\(index)]",
+                    embeddedDepth: embeddedDepth
+                )
             }
             preview = "\(array.count) 项"
         } else {
+            embeddedJSONKind = nil
             children = []
             preview = compactDescription(value)
         }
@@ -492,7 +634,9 @@ enum JSONEngine {
             path: path,
             kind: valueKind,
             preview: preview,
-            children: children
+            copyValue: copyDescription(value),
+            children: children,
+            embeddedJSONKind: embeddedJSONKind
         )
     }
 
